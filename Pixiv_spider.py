@@ -104,12 +104,12 @@ class spider(object):
             self.url_dict_queue.put(url_dict)
             self.total_pic_num += 1  # 计数器，计算一共多少张图片
 
-        if self.has_next_page(soup):
-            self.page_num += 1
-            self.bookmark_url = re.sub("(?<=show&p=)\d+", str(self.page_num), self.bookmark_url)
-            self.get_urls()
-        else:
-            print(self.total_pic_num)
+            if self.has_next_page(soup):
+                self.page_num += 1
+                self.bookmark_url = re.sub("(?<=show&p=)\d+", str(self.page_num), self.bookmark_url)
+                self.get_urls()
+            else:
+                print(self.total_pic_num)
 
     def download(self):
         """
@@ -125,10 +125,12 @@ class spider(object):
                 pic_id = url_dict["pic_id"]
                 num = url_dict["num"]
                 if url_dict["num"] != 0:
-                    print("id=" + url_dict["pic_id"] + "有多张图片")
+                    print("id=" + url_dict["pic_id"] + "有多张图片\n")
                     for i in range(0, num):
                         num = str(i)
-                        original_url = re.sub("\d(?=.jpg)", num, original_url)
+                        print(referer_url)
+                        original_url = re.sub("\d+(?=.jpg)", num, original_url)
+                        print(original_url)
                         self.download_single_pic(referer_url, original_url, pic_id + "_p" + num)
                 else:
                     self.download_single_pic(referer_url, original_url, pic_id)
@@ -149,7 +151,6 @@ class spider(object):
                 "user-agent": "Mozilla/5.0 (Windows NT 6.2) AppleWebKit/536.3 (KHTML, like Gecko) Chrome/19.0.1061.0 "
                               "Safari/536.3",
                 "Referer": referer_url,
-                "DNT": "1"
             }
             resp = self.session.get(original_url,
                                     headers=headers)
@@ -157,13 +158,14 @@ class spider(object):
                 new_img_url = original_url.replace(".jpg", ".png")
                 resp = self.session.get(new_img_url, headers=headers)
                 if resp.status_code != 200:
-                    print("发生错误，图片id=" + pic_id)
+                    print("发生错误，图片id=" + pic_id + "\n")
+                    print(resp.status_code)
                 else:
-                    print("获取成功，开始下载id=" + pic_id + "图片")
+                    print("成功获取下载id=" + pic_id + "图片\n")
                     with open(self.date + "/" + pic_id + ".png", "wb") as f:
                         f.write(resp.content)
             else:
-                print("获取成功，开始下载id=" + pic_id + "图片")
+                print("成功获取id=" + pic_id + "图片\n")
                 with open(self.date + "/" + pic_id + ".jpg", "wb") as f:
                     f.write(resp.content)
         except Exception as e:
@@ -177,9 +179,9 @@ class spider(object):
         try:
             if not os.path.exists(self.date):
                 os.makedirs(self.date)
-                print("创建名为\"" + self.date + "\"的文件夹")
+                print("创建名为\"" + self.date + "\"的文件夹\n")
             else:
-                print("已经存在名为\"" + self.date + "\"的文件夹")
+                print("已经存在名为\"" + self.date + "\"的文件夹\n")
         except Exception as e:
             print(e)
             self.date = ""
