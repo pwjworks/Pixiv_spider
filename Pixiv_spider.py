@@ -2,9 +2,9 @@
 import time
 import re
 from queue import Queue
-
 import os
 import requests
+import MySQLdb
 from bs4 import BeautifulSoup
 
 """
@@ -33,6 +33,8 @@ class spider(object):
         self.date = time.strftime("%Y%b", time.localtime())
         self.page_num = 1
         self.total_pic_num = 0
+        self.conn = MySQLdb.connect(host="localhost", port=3306, user="root", passwd="", db="pixiv_spider",
+                                    charset='utf8')
 
     def get_postkey(self):
         """
@@ -70,10 +72,6 @@ class spider(object):
             print("登录失败,请检查账号密码")
             return False
 
-    def check_login(self):
-        resp = self.session.get(self.login_url, headers=self.headers)
-        print(resp.text)
-
     def get_urls(self):
         """
         以get的方式获取收藏页面
@@ -81,6 +79,8 @@ class spider(object):
         将获取的图片id，原始url，图片页面url存进字典队列中
         :return:
         """
+        picid_list = self.read_database()
+        picid_new_list = []
         print(self.bookmark_url)
         resp = self.session.get(self.bookmark_url)
         print(resp.status_code)
@@ -90,26 +90,31 @@ class spider(object):
         for tag in result_set:
             num = 0
             referer_url = "https://www.pixiv.net/" + tag.get("href")
-            url = tag.img.get("data-src")
-            if tag.span is not None:
-                num = int(tag.span.string)  # 取得图片的张数
             pic_id = re.search("id=(\d*)", referer_url, re.S).group(1)  # 正则匹配图片id
-            original_url = url.replace("c/150x150/img-master", "img-original").replace("_master1200", "")  # 构建图片原始url
-            url_dict = {  # url字典，用于构建request
-                "num": num,
-                "pic_id": pic_id,
-                "original_url": original_url,
-                "referer_url": referer_url
-            }
-            self.url_dict_queue.put(url_dict)
-            self.total_pic_num += 1  # 计数器，计算一共多少张图片
-
-            if self.has_next_page(soup):
-                self.page_num += 1
-                self.bookmark_url = re.sub("(?<=show&p=)\d+", str(self.page_num), self.bookmark_url)
-                self.get_urls()
-            else:
-                print(self.total_pic_num)
+            if int(pic_id) not in picid_list:
+                print("ppp")
+                url = tag.img.get("data-src")
+                if tag.span is not None:
+                    num = int(tag.span.string)  # 取得图片的张数
+                picid_new_list.append(pic_id)
+                original_url = url.replace("c/150x150/img-master", "img-original").replace("_master1200", "")
+                # 构建图片原始url
+                url_dict = {  # url字典，用于构建request
+                    "num": num,
+                    "pic_id": pic_id,
+                    "original_url": original_url,
+                    "referer_url": referer_url
+                }
+                self.url_dict_queue.put(url_dict)
+                self.total_pic_num += 1  # 计数器，计算一共多少张图
+        if self.has_next_page(soup):  # 如果有下一页，就进行迭代
+            self.page_num += 1
+            self.bookmark_url = re.sub("(?<=show&p=)\d+", str(self.page_num), self.bookmark_url)
+            self.get_urls()
+        else:
+            print(self.total_pic_num)
+        for pic_id in picid_new_list:
+            self.write_database(pic_id)
 
     def download(self):
         """
@@ -197,6 +202,34 @@ class spider(object):
             return False
         else:
             return True
+
+    def write_database(self, pic_id):
+        cursor = self.conn.cursor()
+        sql = "insert into pic_info values (" + pic_id + ");"
+        print(sql)
+        try:
+            cursor.execute(sql)
+            self.conn.commit()
+            cursor.close()
+        except Exception as e:
+            print(e)
+
+    def read_database(self):
+        cursor = self.conn.cursor()
+        sql = "select*from pic_info"
+        url_list = []
+        print(sql)
+        try:
+            cursor.execute(sql)
+            results = cursor.fetchall()
+            self.conn.commit()
+            cursor.close()
+            for result in results:
+                url_list.append(result[0])
+            print(url_list)
+            return url_list
+        except Exception as e:
+            print(e)
 
 
 if __name__ == '__main__':
