@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import json
 import time
 import re
 from queue import Queue
@@ -33,8 +34,8 @@ class spider(object):
         self.date = time.strftime("%Y%b", time.localtime())
         self.page_num = 1
         self.total_pic_num = 0
-        self.conn = MySQLdb.connect(host="localhost", port=3306, user="root", passwd="", db="pixiv_spider",
-                                    charset='utf8')
+        self.conn = None
+        self.picid_list = []
 
     def get_postkey(self):
         """
@@ -79,11 +80,8 @@ class spider(object):
         将获取的图片id，原始url，图片页面url存进字典队列中
         :return:
         """
-        picid_list = self.read_database()
         picid_new_list = []
-        print(self.bookmark_url)
         resp = self.session.get(self.bookmark_url)
-        print(resp.status_code)
         soup = BeautifulSoup(resp.text, "html.parser")
         result_set = soup.find_all("a", attrs={"class": re.compile("work _work")})  # 抓取图片浏览页面url
 
@@ -91,8 +89,7 @@ class spider(object):
             num = 0
             referer_url = "https://www.pixiv.net/" + tag.get("href")
             pic_id = re.search("id=(\d*)", referer_url, re.S).group(1)  # 正则匹配图片id
-            if int(pic_id) not in picid_list:
-                print("ppp")
+            if int(pic_id) not in self.picid_list:
                 url = tag.img.get("data-src")
                 if tag.span is not None:
                     num = int(tag.span.string)  # 取得图片的张数
@@ -206,7 +203,6 @@ class spider(object):
     def write_database(self, pic_id):
         cursor = self.conn.cursor()
         sql = "insert into pic_info values (" + pic_id + ");"
-        print(sql)
         try:
             cursor.execute(sql)
             self.conn.commit()
@@ -217,25 +213,42 @@ class spider(object):
     def read_database(self):
         cursor = self.conn.cursor()
         sql = "select*from pic_info"
-        url_list = []
-        print(sql)
         try:
             cursor.execute(sql)
             results = cursor.fetchall()
             self.conn.commit()
             cursor.close()
             for result in results:
-                url_list.append(result[0])
-            print(url_list)
-            return url_list
+                self.picid_list.append(result[0])
         except Exception as e:
             print(e)
+
+    def get_connection(self):
+        try:
+            self.conn = MySQLdb.connect(host="localhost", port=3306, user="", passwd="",
+                                        db="pixiv_spider",
+                                        charset='utf8')
+            return True
+        except Exception as e:
+            print(e)
+
+    def close_connection(self):
+        try:
+            self.conn.close()
+        except Exception as e:
+            print(e)
+
+    def check_login(self):
+        resp = self.session.get("https://www.pixiv.net/bookmark.php?rest=show&p=1")
+        print(resp.json())
 
 
 if __name__ == '__main__':
     spider = spider()
-    spider.login()
-    spider.get_urls()
-    spider.makdir_by_date()
-    spider.download()
-    # spider.test()
+    if spider.get_connection():
+        spider.login()
+        spider.read_database()
+        spider.get_urls()
+        spider.makdir_by_date()
+        spider.download()
+        spider.close_connection()
