@@ -1,18 +1,13 @@
 #!/usr/bin/python
-import json
 import time
 import re
+from http import cookiejar
 from queue import Queue
 import os
 import requests
 import MySQLdb
 from bs4 import BeautifulSoup
 
-"""
-login
-log
-timer
-"""
 
 
 class spider(object):
@@ -36,6 +31,7 @@ class spider(object):
         self.total_pic_num = 0
         self.conn = None
         self.picid_list = []
+        self.session.cookies = cookiejar.LWPCookieJar(filename="./cookies.txt")
 
     def get_postkey(self):
         """
@@ -46,11 +42,41 @@ class spider(object):
         matchObj = re.search('"pixivAccount.postKey":"(\w*?)"', resp.text, re.S)  # 正则匹配postkey
         return matchObj.group(1)
 
+    def check_login(self):
+        """
+        检查登录状态
+        尝试访问登录页面，若返回302，就表明已经登录
+        :return:
+        """
+        print("检查登录状态...")
+        resp = self.session.get(self.login_url, allow_redirects=False)
+        if resp.status_code == 302:
+            self.session.cookies.save()
+            print("已登录,保存cookie文件")
+            return True
+        return False
+
+    def load_cookies(self):
+        """
+        读取cookie文件
+        :return: 是否已经读取文件
+        """
+        try:
+            self.session.cookies.load(ignore_discard=True)
+            print("读取cookies文件")
+            return True
+        except FileNotFoundError:
+            return False
+
     def login(self):
         """
         构建headers和formData，把headers和formData用post的方式发送到pixiv的登录api
         :return: 返回是否登录成功的布尔值
         """
+        if self.load_cookies():
+            self.check_login()
+            return True
+
         headers = self.headers
         post_key = self.get_postkey()
         headers.update({
@@ -68,10 +94,12 @@ class spider(object):
         resp_dict = resp.json()  # 返回字典
         if "success" in resp_dict["body"]:
             print("登录成功")
+            self.check_login()
             return True
         else:
             print("登录失败,请检查账号密码")
             return False
+
 
     def get_urls(self):
         """
@@ -237,10 +265,6 @@ class spider(object):
             self.conn.close()
         except Exception as e:
             print(e)
-
-    def check_login(self):
-        resp = self.session.get("https://www.pixiv.net/bookmark.php?rest=show&p=1")
-        print(resp.json())
 
 
 if __name__ == '__main__':
